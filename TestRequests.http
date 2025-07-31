@@ -1,0 +1,272 @@
+### ==============================================
+### User Management API Test Cases
+### ==============================================
+
+### Variables
+@baseUrl = http://localhost:5070
+@validToken = mysecret123
+@invalidToken = wrongtoken
+
+### ==============================================
+### PUBLIC ENDPOINTS (No Authentication Required)
+### ==============================================
+
+### Test 1: Root Endpoint
+GET {{baseUrl}}/
+
+### Test 2: Error Endpoint (Triggers Global Exception Handler)
+GET {{baseUrl}}/error
+
+### ==============================================
+### PROTECTED ENDPOINTS - AUTHENTICATION TESTS
+### ==============================================
+
+### Test 3: Get All Users - No Token (Should Fail with 401)
+GET {{baseUrl}}/users
+
+### Test 4: Get All Users - Invalid Token (Should Fail with 401)
+GET {{baseUrl}}/users
+Authorization: {{invalidToken}}
+
+### Test 5: Get All Users - Valid Token (Should Succeed)
+GET {{baseUrl}}/users
+Authorization: {{validToken}}
+
+### ==============================================
+### GET USER BY ID TESTS
+### ==============================================
+
+### Test 6: Get User by ID - Valid Token, Existing User (Should Succeed)
+GET {{baseUrl}}/users/1
+Authorization: {{validToken}}
+
+### Test 7: Get User by ID - Valid Token, Non-Existing User (Should Return 404)
+GET {{baseUrl}}/users/999
+Authorization: {{validToken}}
+
+### Test 8: Get User by ID - No Token (Should Fail with 401)
+GET {{baseUrl}}/users/1
+
+### ==============================================
+### CREATE USER TESTS
+### ==============================================
+
+### Test 9: Create New User - Valid Token, Valid Data (Should Succeed)
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "John Doe",
+    "email": "john@example.com",
+    "userAge": 28
+}
+
+### Test 10: Create User - No Token (Should Fail with 401)
+POST {{baseUrl}}/users
+Content-Type: application/json
+
+{
+    "username": "Jane Doe",
+    "email": "jane@example.com",
+    "userAge": 25
+}
+
+### Test 11: Create User - Valid Token, Invalid Data (Empty Username)
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "",
+    "email": "test@example.com",
+    "userAge": 30
+}
+
+### Test 12: Create User - Valid Token, Invalid Email Format
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Test User",
+    "email": "invalid-email",
+    "userAge": 25
+}
+
+### Test 13: Create User - Valid Token, Negative Age
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Test User",
+    "email": "test@example.com",
+    "userAge": -5
+}
+
+### Test 14: Create User - Valid Token, Age Too High
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Test User",
+    "email": "test@example.com",
+    "userAge": 200
+}
+
+### Test 15: Create User - Valid Token, Username Too Long
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "This is a very long username that exceeds the 100 character limit and should be rejected by the validation logic in the API endpoint",
+    "email": "test@example.com",
+    "userAge": 30
+}
+
+### ==============================================
+### UPDATE USER TESTS
+### ==============================================
+
+### Test 16: Update Existing User - Valid Token, Valid Data (Should Succeed)
+PUT {{baseUrl}}/users/1
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Alice Updated",
+    "email": "alice.updated@example.com",
+    "userAge": 31
+}
+
+### Test 17: Update Non-Existing User - Valid Token (Should Return 404)
+PUT {{baseUrl}}/users/999
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Non Existing",
+    "email": "nonexisting@example.com",
+    "userAge": 25
+}
+
+### Test 18: Update User - No Token (Should Fail with 401)
+PUT {{baseUrl}}/users/2
+Content-Type: application/json
+
+{
+    "username": "Bob Updated",
+    "email": "bob.updated@example.com",
+    "userAge": 26
+}
+
+### Test 19: Update User - Valid Token, Invalid Data (Empty Email)
+PUT {{baseUrl}}/users/2
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Bob Updated",
+    "email": "",
+    "userAge": 26
+}
+
+### ==============================================
+### DELETE USER TESTS
+### ==============================================
+
+### Test 20: Delete Existing User - Valid Token (Should Succeed)
+DELETE {{baseUrl}}/users/3
+Authorization: {{validToken}}
+
+### Test 21: Delete Non-Existing User - Valid Token (Should Return 404)
+DELETE {{baseUrl}}/users/999
+Authorization: {{validToken}}
+
+### Test 22: Delete User - No Token (Should Fail with 401)
+DELETE {{baseUrl}}/users/2
+
+### ==============================================
+### EDGE CASES AND SPECIAL SCENARIOS
+### ==============================================
+
+### Test 23: Create User with Minimum Valid Age
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Baby User",
+    "email": "baby@example.com",
+    "userAge": 0
+}
+
+### Test 24: Create User with Maximum Valid Age
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Senior User",
+    "email": "senior@example.com",
+    "userAge": 150
+}
+
+### Test 25: Create User with Valid Complex Email
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Complex Email User",
+    "email": "user.name+tag@example-domain.co.uk",
+    "userAge": 35
+}
+
+### Test 26: Get All Users After Operations (Check Current State)
+GET {{baseUrl}}/users
+Authorization: {{validToken}}
+
+### ==============================================
+### STRESS TEST (Multiple Rapid Requests)
+### ==============================================
+
+### Test 27: Rapid User Creation Test 1
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Rapid Test 1",
+    "email": "rapid1@example.com",
+    "userAge": 25
+}
+
+### Test 28: Rapid User Creation Test 2
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Rapid Test 2",
+    "email": "rapid2@example.com",
+    "userAge": 26
+}
+
+### Test 29: Rapid User Creation Test 3
+POST {{baseUrl}}/users
+Authorization: {{validToken}}
+Content-Type: application/json
+
+{
+    "username": "Rapid Test 3",
+    "email": "rapid3@example.com",
+    "userAge": 27
+}
+
+### Test 30: Final State Check - Get All Users
+GET {{baseUrl}}/users
+Authorization: {{validToken}}
