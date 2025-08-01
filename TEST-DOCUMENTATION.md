@@ -122,13 +122,13 @@ Response Status: 200
 ### Prerequisites
 1. Install REST Client extension in VS Code
 2. Start API with `dotnet run`
-3. API runs on `https://localhost:5070`
+3. API runs on `http://localhost:5070`
 
 ### Running Tests
 1. Open `TestRequests.http` in VS Code
 2. Use variables defined at top:
    ```http
-   @baseUrl = https://localhost:5070
+   @baseUrl = http://localhost:5070
    @validToken = mysecret123
    @invalidToken = wrongtoken
    ```

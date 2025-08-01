@@ -33,7 +33,7 @@ A simple REST API for managing users built with ASP.NET Core minimal APIs. This 
 3. **Test the API**
    - Open `TestRequests.http` in VS Code
    - Click "Send Request" above any test case
-   - API runs on `https://localhost:5070`
+   - API runs on `http://localhost:5070`
 
 ## API Endpoints
 
@@ -60,11 +60,11 @@ Authorization: mysecret123
 
 ```http
 # Get all users
-GET https://localhost:5070/users
+GET http://localhost:5070/users
 Authorization: mysecret123
 
 # Create new user
-POST https://localhost:5070/users
+POST http://localhost:5070/users
 Authorization: mysecret123
 Content-Type: application/json
 
