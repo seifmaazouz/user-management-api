@@ -1,20 +1,79 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 
-// Configuration
+// Configuration constants
 const string AUTH_TOKEN = "mysecret123";
+const string BASE_URL = "http://localhost:5070";
 const int MAX_AGE = 150;
 const int MAX_USERNAME_LENGTH = 100;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseUrls(BASE_URL);
+
 var app = builder.Build();
 
-// Middleware
-app.UseGlobalExceptionHandling();
-app.UseSimpleAuthentication();
-app.UseRequestResponseLogging();
+// Global exception handling middleware
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        // Log the error
+        app.Logger.LogError(ex, "Error occurred for {Method} {Path}",
+            context.Request.Method,
+            context.Request.Path);
 
-// Data storage
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+
+        var response = new
+        {
+            error = "An internal server error occurred",
+            details = app.Environment.IsDevelopment() ? ex.Message : "Please try again later"
+        };
+
+        await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+    }
+});
+
+// Authentication middleware
+app.Use(async (context, next) =>
+{
+    // Skip auth for public endpoints
+    if (context.Request.Path == "/" || context.Request.Path == "/error")
+    {
+        await next();
+        return;
+    }
+
+    var token = context.Request.Headers["Authorization"].FirstOrDefault();
+    
+    if (!isValidToken(token))
+    {
+        context.Response.StatusCode = 401;
+        await context.Response.WriteAsync("Unauthorized");
+        return;
+    }
+
+    await next();
+});
+
+// Request/Response logging middleware
+app.Use(async (context, next) =>
+{
+    var logger = app.Logger;
+    
+    logger.LogInformation("Request Method: {Method}, Path: {Path}", context.Request.Method, context.Request.Path);
+    
+    await next();
+    
+    logger.LogInformation("Response Status: {StatusCode}", context.Response.StatusCode);
+});
+
+// Thread-safe dictionary for concurrent access
 var users = new ConcurrentDictionary<int, User>
 {
     [1] = new User { Username = "Alice", Email = "alice@example.com", UserAge = 30 },
@@ -22,118 +81,122 @@ var users = new ConcurrentDictionary<int, User>
     [3] = new User { Username = "Charlie", Email = "charlie@example.com", UserAge = 35 }
 };
 
-int nextUserId = 4;
-int GetNextUserId() => Interlocked.Increment(ref nextUserId);
+// Thread-safe auto-incrementing ID counter
+int nextUserId = users.Count + 1;
 
-// Helper methods
-NotFound<object> UserNotFound(int id) => Results.NotFound(new { error = $"User with ID {id} not found" });
-BadRequest<object> ValidationError(string message) => Results.BadRequest(new { error = message });
-
-// Validation
-(bool isValid, string errorMessage) ValidateUser(User? user)
+// Thread-safe ID generation
+int GetNextUserId()
 {
-    if (user == null) return (false, "User data is required");
-    if (string.IsNullOrWhiteSpace(user.Username)) return (false, "Username is required");
-    if (user.Username.Length > MAX_USERNAME_LENGTH) return (false, "Username too long");
-    if (string.IsNullOrWhiteSpace(user.Email)) return (false, "Email is required");
-    if (!IsValidEmail(user.Email)) return (false, "Invalid email format");
-    if (user.UserAge < 0 || user.UserAge > MAX_AGE) return (false, "Invalid age");
+    return Interlocked.Increment(ref nextUserId) - 1;
+}
+
+bool isValidToken(string? token)
+{
+    return !string.IsNullOrEmpty(token) && token == AUTH_TOKEN;
+}
+
+// Validate user data
+    (bool isValid, string errorMessage) ValidateUser(User? user)
+{
+    if (user == null)
+        return (false, "User data is required");
+    
+    if (string.IsNullOrWhiteSpace(user.Username))
+        return (false, "Username is required and cannot be empty");
+    
+    if (user.Username.Length > MAX_USERNAME_LENGTH)
+        return (false, "Username cannot exceed 100 characters");
+    
+    if (string.IsNullOrWhiteSpace(user.Email))
+        return (false, "Email is required and cannot be empty");
+    
+    if (!IsValidEmail(user.Email))
+        return (false, "Email format is invalid");
+    
+    if (user.UserAge < 0)
+        return (false, "Age cannot be negative");
+    
+    if (user.UserAge > MAX_AGE)
+        return (false, "Age cannot exceed 150");
+    
     return (true, string.Empty);
 }
 
+// Validate email format
 bool IsValidEmail(string email)
 {
-    try { return new System.Net.Mail.MailAddress(email).Address == email; }
-    catch { return false; }
+    try
+    {
+        var addr = new System.Net.Mail.MailAddress(email);
+        return addr.Address == email;
+    }
+    catch
+    {
+        return false;
+    }
 }
 
-// Endpoints
-app.MapGet("/", () => "User Management API");
-app.MapGet("/error", () => throw new Exception("Test exception"));
+app.MapGet("/", () => "This is the root endpoint!");
 
-app.MapGet("/users", () => Results.Ok(users.Values.ToList()));
+// Test endpoint for global exception handler
+app.MapGet("/error", () => { throw new Exception("This is a test exception to trigger the global error handler."); });
 
+// GET: Retrieve all users
+app.MapGet("/users", () =>
+{
+    return Results.Ok(users.Values.ToList());
+});
+
+// GET: Retrieve user by ID
 app.MapGet("/users/{id:int}", (int id) =>
-    users.TryGetValue(id, out var user) ? Results.Ok(user) : UserNotFound(id));
+{
+    if (users.TryGetValue(id, out var user))
+    {
+        return Results.Ok(user);
+    }
+    return Results.NotFound(new { error = $"User with ID {id} not found" });
+});
 
+// POST: Create a new user
 app.MapPost("/users", (User? user) =>
 {
     var validation = ValidateUser(user);
-    if (!validation.isValid) return ValidationError(validation.errorMessage);
+    if (!validation.isValid)
+    {
+        return Results.BadRequest(new { error = validation.errorMessage });
+    }
     
     int newId = GetNextUserId();
     users.TryAdd(newId, user!);
     return Results.Created($"/users/{newId}", user);
 });
 
+// PUT: Update an existing user
 app.MapPut("/users/{id:int}", (int id, User? user) =>
 {
-    if (!users.ContainsKey(id)) return UserNotFound(id);
+    if (!users.ContainsKey(id))
+    {
+        return Results.NotFound(new { error = $"User with ID {id} not found" });
+    }
     
     var validation = ValidateUser(user);
-    if (!validation.isValid) return ValidationError(validation.errorMessage);
+    if (!validation.isValid)
+    {
+        return Results.BadRequest(new { error = validation.errorMessage });
+    }
     
     users.TryUpdate(id, user!, users[id]);
     return Results.Ok(user);
 });
 
+// DELETE: Remove a user by ID
 app.MapDelete("/users/{id:int}", (int id) =>
-    users.TryRemove(id, out _) ? Results.NoContent() : UserNotFound(id));
+{
+    if (users.TryRemove(id, out var removedUser))
+    {
+        return Results.NoContent();
+    }
+    return Results.NotFound(new { error = $"User with ID {id} not found" });
+});
 
 app.Run();
-
-// Middleware extensions
-static class MiddlewareExtensions
-{
-    public static void UseGlobalExceptionHandling(this WebApplication app)
-    {
-        app.Use(async (context, next) =>
-        {
-            try
-            {
-                await next();
-            }
-            catch (Exception ex)
-            {
-                app.Logger.LogError(ex, "Error: {Method} {Path}", context.Request.Method, context.Request.Path);
-                context.Response.StatusCode = 500;
-                context.Response.ContentType = "application/json";
-                
-                var response = new { error = "Internal server error" };
-                await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-            }
-        });
-    }
-
-    public static void UseSimpleAuthentication(this WebApplication app)
-    {
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Path == "/" || context.Request.Path == "/error")
-            {
-                await next();
-                return;
-            }
-
-            var token = context.Request.Headers["Authorization"].FirstOrDefault();
-            if (token != AUTH_TOKEN)
-            {
-                context.Response.StatusCode = 401;
-                await context.Response.WriteAsync("Unauthorized");
-                return;
-            }
-
-            await next();
-        });
-    }
-
-    public static void UseRequestResponseLogging(this WebApplication app)
-    {
-        app.Use(async (context, next) =>
-        {
-            app.Logger.LogInformation("{Method} {Path}", context.Request.Method, context.Request.Path);
-            await next();
-            app.Logger.LogInformation("Response: {StatusCode}", context.Response.StatusCode);
-        });
-    }
-}
