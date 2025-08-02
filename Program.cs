@@ -73,12 +73,12 @@ app.Use(async (context, next) =>
     logger.LogInformation("Response Status: {StatusCode}", context.Response.StatusCode);
 });
 
-// Thread-safe dictionary for concurrent access
+// Thread-safe dictionary for concurrent access - NOW WITH IDs IN USER OBJECTS
 var users = new ConcurrentDictionary<int, User>
 {
-    [1] = new User { Username = "Alice", Email = "alice@example.com", UserAge = 30 },
-    [2] = new User { Username = "Bob", Email = "bob@example.com", UserAge = 25 },
-    [3] = new User { Username = "Charlie", Email = "charlie@example.com", UserAge = 35 }
+    [1] = new User { Id = 1, Username = "Alice", Email = "alice@example.com", UserAge = 30 },
+    [2] = new User { Id = 2, Username = "Bob", Email = "bob@example.com", UserAge = 25 },
+    [3] = new User { Id = 3, Username = "Charlie", Email = "charlie@example.com", UserAge = 35 }
 };
 
 // Thread-safe auto-incrementing ID counter
@@ -157,7 +157,7 @@ app.MapGet("/users/{id:int}", (int id) =>
     return Results.NotFound(new { error = $"User with ID {id} not found" });
 });
 
-// POST: Create a new user
+// POST: Create a new user - NOW SETS THE ID ON THE USER OBJECT
 app.MapPost("/users", (User? user) =>
 {
     var validation = ValidateUser(user);
@@ -167,11 +167,12 @@ app.MapPost("/users", (User? user) =>
     }
     
     int newId = GetNextUserId();
-    users.TryAdd(newId, user!);
-    return Results.Created($"/users/{newId}", user);
+    user!.Id = newId; // Set the ID on the user object
+    users.TryAdd(newId, user);
+    return Results.Created($"/users/{newId}", user); // Return the user with ID
 });
 
-// PUT: Update an existing user
+// PUT: Update an existing user - NOW PRESERVES THE ID
 app.MapPut("/users/{id:int}", (int id, User? user) =>
 {
     if (!users.ContainsKey(id))
@@ -185,8 +186,9 @@ app.MapPut("/users/{id:int}", (int id, User? user) =>
         return Results.BadRequest(new { error = validation.errorMessage });
     }
     
-    users.TryUpdate(id, user!, users[id]);
-    return Results.Ok(user);
+    user!.Id = id; // Ensure the user object has the correct ID
+    users.TryUpdate(id, user, users[id]);
+    return Results.Ok(user); // Return the updated user with ID
 });
 
 // DELETE: Remove a user by ID
