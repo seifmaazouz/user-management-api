@@ -1,12 +1,13 @@
-using System.Text.Json;
 using UserManagementAPI.Models;
 using UserManagementAPI.Interfaces;
 using UserManagementAPI.Repositories;
 using UserManagementAPI.Services;
+using UserManagementAPI.Middleware;
 
 // === CONFIGURATION ===
-const string AUTH_TOKEN = "mysecret123";
 const string BASE_URL = "http://localhost:5070";
+// Configuration automatically reads from appsettings.json for settings like AuthToken (not good for production, but fine for learning)
+// for production, use environment variables or secure vaults
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(BASE_URL);
@@ -14,77 +15,15 @@ builder.WebHost.UseUrls(BASE_URL);
 // Add services
 // Register repository as singleton - for in-memory storage (Database would use scoped)
 builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
-// builder.Services.AddScoped<IUserService, DatabaseUserService>();
 // Keep as scoped - Can be singleton for in-memory, but scoped better for future DB integration
 builder.Services.AddScoped<IUserService, UserService>();
 
 var app = builder.Build();
 
-// === HELPER METHODS ===
-bool IsValidToken(string? token)
-{
-    return !string.IsNullOrEmpty(token) && token == AUTH_TOKEN;
-}
-
 // === MIDDLEWARE ===
-// Global exception handling
-app.Use(async (context, next) =>
-{
-    try
-    {
-        await next();
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Error occurred for {Method} {Path}",
-            context.Request.Method, context.Request.Path);
-
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "application/json";
-
-        var response = new
-        {
-            error = "An internal server error occurred",
-            details = app.Environment.IsDevelopment() ? ex.Message : "Please try again later"
-        };
-
-        await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-    }
-});
-
-// Authentication middleware
-app.Use(async (context, next) =>
-{
-    // Skip authentication for public endpoints
-    if (context.Request.Path == "/" || context.Request.Path == "/error")
-    {
-        await next();
-        return;
-    }
-
-    var token = context.Request.Headers["Authorization"].FirstOrDefault();
-    
-    if (!IsValidToken(token))
-    {
-        context.Response.StatusCode = 401;
-        await context.Response.WriteAsync("Unauthorized");
-        return;
-    }
-
-    await next();
-});
-
-// Request/Response logging
-app.Use(async (context, next) =>
-{
-    var logger = app.Logger;
-    
-    logger.LogInformation("Request: {Method} {Path}", context.Request.Method, context.Request.Path);
-    
-    await next();
-    
-    logger.LogInformation("Response: {StatusCode}", context.Response.StatusCode);
-});
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseMiddleware<AuthenticationMiddleware>();
+app.UseMiddleware<RequestLoggingMiddleware>();
 
 // === ENDPOINTS ===
 app.MapGet("/", () => "User Management API - Welcome!");
