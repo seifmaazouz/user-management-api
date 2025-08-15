@@ -41,14 +41,11 @@ public class InMemoryUserRepository : IUserRepository
 
     public Task<User?> UpdateUserAsync(int id, User user)
     {
-        if (!_users.ContainsKey(id))
-        {
+        if (!_users.TryGetValue(id, out var existingUser))
             return Task.FromResult<User?>(null);
-        }
 
         var updatedUser = user with { Id = id };
-        _users.TryUpdate(id, updatedUser, _users[id]);
-        return Task.FromResult(updatedUser);
+        return Task.FromResult(_users.TryUpdate(id, updatedUser, existingUser) ? updatedUser : null);
     }
 
     public Task<bool> DeleteUserAsync(int id)
