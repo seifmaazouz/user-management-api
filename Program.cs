@@ -1,6 +1,7 @@
 using System.Text.Json;
-using System.Collections.Concurrent;
 using UserManagementAPI.Models;
+using UserManagementAPI.Interfaces;
+using UserManagementAPI.Repositories;
 using System.Net.Mail;
 
 // === CONFIGURATION ===
@@ -13,26 +14,12 @@ const int MIN_PASSWORD_LENGTH = 6;
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(BASE_URL);
 
+// Register repository as singleton - for in-memory storage (Database would use scoped)
+builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
+
 var app = builder.Build();
 
-// === DATA STORE ===
-// Thread-safe in-memory data store with sample users
-var users = new ConcurrentDictionary<int, User>
-{
-    [1] = new User { Id = 1, Username = "Alice", Email = "alice@example.com", Age = 30, Password = "password123" },
-    [2] = new User { Id = 2, Username = "Bob", Email = "bob@example.com", Age = 25, Password = "password123" },
-    [3] = new User { Id = 3, Username = "Charlie", Email = "charlie@example.com", Age = 35, Password = "password123" }
-};
-
-// Thread-safe auto-incrementing ID counter starting after existing users
-int nextUserId = users.Count + 1;
-
 // === HELPER METHODS ===
-int GetNextUserId()
-{
-    return Interlocked.Increment(ref nextUserId);
-}
-
 bool IsValidToken(string? token)
 {
     return !string.IsNullOrEmpty(token) && token == AUTH_TOKEN;
@@ -146,12 +133,17 @@ app.MapGet("/", () => "User Management API - Welcome!");
 app.MapGet("/error", () => { throw new Exception("Test exception for global error handler"); });
 
 // GET: Retrieve all users
-app.MapGet("/users", () => Results.Ok(users.Values));
+app.MapGet("/users", async (IUserRepository repository) =>
+{
+    var users = await repository.GetAllUsersAsync();
+    return Results.Ok(users);
+});
 
 // GET: Retrieve user by ID
-app.MapGet("/users/{id:int}", (int id) =>
+app.MapGet("/users/{id:int}", async (int id, IUserRepository repository) =>
 {
-    if (users.TryGetValue(id, out var user))
+    var user = await repository.GetUserByIdAsync(id);
+    if (user != null)
     {
         return Results.Ok(user);
     }
@@ -159,7 +151,7 @@ app.MapGet("/users/{id:int}", (int id) =>
 });
 
 // POST: Create new user
-app.MapPost("/users", (User? user) =>
+app.MapPost("/users", async (User? user, IUserRepository repository) =>
 {
     var validation = ValidateUser(user);
     if (!validation.isValid)
@@ -167,17 +159,14 @@ app.MapPost("/users", (User? user) =>
         return Results.BadRequest(new { error = validation.errorMessage });
     }
     
-    int newId = GetNextUserId();
-    var newUser = user! with { Id = newId };
-    users.TryAdd(newId, newUser); // Remove unnecessary check - ID is always unique
-    return Results.Created($"/users/{newId}", newUser);
+    var newUser = await repository.CreateUserAsync(user!);
+    return Results.Created($"/users/{newUser.Id}", newUser);
 });
 
 // PUT: Update existing user
-app.MapPut("/users/{id:int}", (int id, User? user) =>
+app.MapPut("/users/{id:int}", async (int id, User? user, IUserRepository repository) =>
 {
-    // Check if user exists first
-    if (!users.ContainsKey(id))
+    if (!await repository.UserExistsAsync(id))
     {
         return Results.NotFound(new { error = $"User with ID {id} not found" });
     }
@@ -188,15 +177,14 @@ app.MapPut("/users/{id:int}", (int id, User? user) =>
         return Results.BadRequest(new { error = validation.errorMessage });
     }
     
-    var userToStore = user! with { Id = id };
-    users.TryUpdate(id, userToStore, users[id]);
-    return Results.Ok(userToStore);
+    var updatedUser = await repository.UpdateUserAsync(id, user!);
+    return Results.Ok(updatedUser);
 });
 
 // DELETE: Remove user by ID
-app.MapDelete("/users/{id:int}", (int id) =>
+app.MapDelete("/users/{id:int}", async (int id, IUserRepository repository) =>
 {
-    if (users.TryRemove(id, out _))
+    if (await repository.DeleteUserAsync(id))
     {
         return Results.NoContent();
     }
