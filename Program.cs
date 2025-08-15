@@ -1,18 +1,87 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Collections.Concurrent;
+using UserManagementAPI.Models;
+using System.Net.Mail;
 
-// Configuration constants
+// === CONFIGURATION ===
 const string AUTH_TOKEN = "mysecret123";
 const string BASE_URL = "http://localhost:5070";
 const int MAX_AGE = 150;
 const int MAX_USERNAME_LENGTH = 100;
+const int MIN_PASSWORD_LENGTH = 6;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(BASE_URL);
 
 var app = builder.Build();
 
-// Global exception handling middleware
+// === DATA STORE ===
+// Thread-safe in-memory data store with sample users
+var users = new ConcurrentDictionary<int, User>
+{
+    [1] = new User { Id = 1, Username = "Alice", Email = "alice@example.com", Age = 30, Password = "password123" },
+    [2] = new User { Id = 2, Username = "Bob", Email = "bob@example.com", Age = 25, Password = "password123" },
+    [3] = new User { Id = 3, Username = "Charlie", Email = "charlie@example.com", Age = 35, Password = "password123" }
+};
+
+// Thread-safe auto-incrementing ID counter starting after existing users
+int nextUserId = users.Count + 1;
+
+// === HELPER METHODS ===
+int GetNextUserId()
+{
+    return Interlocked.Increment(ref nextUserId);
+}
+
+bool IsValidToken(string? token)
+{
+    return !string.IsNullOrEmpty(token) && token == AUTH_TOKEN;
+}
+
+bool IsValidEmail(string email)
+{
+    try
+    {
+        var addr = new MailAddress(email);
+        return addr.Address == email;
+    }
+    catch
+    {
+        return false;
+    }
+}
+
+(bool isValid, string errorMessage) ValidateUser(User? user)
+{
+    if (user == null)
+        return (false, "User data is required");
+    
+    if (string.IsNullOrWhiteSpace(user.Username))
+        return (false, "Username is required and cannot be empty");
+    
+    if (user.Username.Length > MAX_USERNAME_LENGTH)
+        return (false, $"Username cannot exceed {MAX_USERNAME_LENGTH} characters");
+    
+    if (string.IsNullOrWhiteSpace(user.Email))
+        return (false, "Email is required and cannot be empty");
+    
+    if (!IsValidEmail(user.Email))
+        return (false, "Email format is invalid");
+    
+    if (user.Age < 0 || user.Age > MAX_AGE)
+        return (false, $"Age must be between 0 and {MAX_AGE}");
+    
+    if (string.IsNullOrWhiteSpace(user.Password))
+        return (false, "Password is required and cannot be empty");
+    
+    if (user.Password.Length < MIN_PASSWORD_LENGTH)
+        return (false, $"Password must be at least {MIN_PASSWORD_LENGTH} characters long");
+    
+    return (true, string.Empty);
+}
+
+// === MIDDLEWARE ===
+// Global exception handling
 app.Use(async (context, next) =>
 {
     try
@@ -21,10 +90,8 @@ app.Use(async (context, next) =>
     }
     catch (Exception ex)
     {
-        // Log the error
         app.Logger.LogError(ex, "Error occurred for {Method} {Path}",
-            context.Request.Method,
-            context.Request.Path);
+            context.Request.Method, context.Request.Path);
 
         context.Response.StatusCode = 500;
         context.Response.ContentType = "application/json";
@@ -42,7 +109,7 @@ app.Use(async (context, next) =>
 // Authentication middleware
 app.Use(async (context, next) =>
 {
-    // Skip auth for public endpoints
+    // Skip authentication for public endpoints
     if (context.Request.Path == "/" || context.Request.Path == "/error")
     {
         await next();
@@ -51,7 +118,7 @@ app.Use(async (context, next) =>
 
     var token = context.Request.Headers["Authorization"].FirstOrDefault();
     
-    if (!isValidToken(token))
+    if (!IsValidToken(token))
     {
         context.Response.StatusCode = 401;
         await context.Response.WriteAsync("Unauthorized");
@@ -61,91 +128,25 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// Request/Response logging middleware
+// Request/Response logging
 app.Use(async (context, next) =>
 {
     var logger = app.Logger;
     
-    logger.LogInformation("Request Method: {Method}, Path: {Path}", context.Request.Method, context.Request.Path);
+    logger.LogInformation("Request: {Method} {Path}", context.Request.Method, context.Request.Path);
     
     await next();
     
-    logger.LogInformation("Response Status: {StatusCode}", context.Response.StatusCode);
+    logger.LogInformation("Response: {StatusCode}", context.Response.StatusCode);
 });
 
-// Thread-safe dictionary for concurrent access - NOW WITH IDs IN USER OBJECTS
-var users = new ConcurrentDictionary<int, User>
-{
-    [1] = new User { Id = 1, Username = "Alice", Email = "alice@example.com", UserAge = 30 },
-    [2] = new User { Id = 2, Username = "Bob", Email = "bob@example.com", UserAge = 25 },
-    [3] = new User { Id = 3, Username = "Charlie", Email = "charlie@example.com", UserAge = 35 }
-};
+// === ENDPOINTS ===
+app.MapGet("/", () => "User Management API - Welcome!");
 
-// Thread-safe auto-incrementing ID counter
-int nextUserId = users.Count + 1;
-
-// Thread-safe ID generation
-int GetNextUserId()
-{
-    return Interlocked.Increment(ref nextUserId) - 1;
-}
-
-bool isValidToken(string? token)
-{
-    return !string.IsNullOrEmpty(token) && token == AUTH_TOKEN;
-}
-
-// Validate user data
-    (bool isValid, string errorMessage) ValidateUser(User? user)
-{
-    if (user == null)
-        return (false, "User data is required");
-    
-    if (string.IsNullOrWhiteSpace(user.Username))
-        return (false, "Username is required and cannot be empty");
-    
-    if (user.Username.Length > MAX_USERNAME_LENGTH)
-        return (false, "Username cannot exceed 100 characters");
-    
-    if (string.IsNullOrWhiteSpace(user.Email))
-        return (false, "Email is required and cannot be empty");
-    
-    if (!IsValidEmail(user.Email))
-        return (false, "Email format is invalid");
-    
-    if (user.UserAge < 0)
-        return (false, "Age cannot be negative");
-    
-    if (user.UserAge > MAX_AGE)
-        return (false, "Age cannot exceed 150");
-    
-    return (true, string.Empty);
-}
-
-// Validate email format
-bool IsValidEmail(string email)
-{
-    try
-    {
-        var addr = new System.Net.Mail.MailAddress(email);
-        return addr.Address == email;
-    }
-    catch
-    {
-        return false;
-    }
-}
-
-app.MapGet("/", () => "This is the root endpoint!");
-
-// Test endpoint for global exception handler
-app.MapGet("/error", () => { throw new Exception("This is a test exception to trigger the global error handler."); });
+app.MapGet("/error", () => { throw new Exception("Test exception for global error handler"); });
 
 // GET: Retrieve all users
-app.MapGet("/users", () =>
-{
-    return Results.Ok(users.Values.ToList());
-});
+app.MapGet("/users", () => Results.Ok(users.Values));
 
 // GET: Retrieve user by ID
 app.MapGet("/users/{id:int}", (int id) =>
@@ -157,7 +158,7 @@ app.MapGet("/users/{id:int}", (int id) =>
     return Results.NotFound(new { error = $"User with ID {id} not found" });
 });
 
-// POST: Create a new user - NOW SETS THE ID ON THE USER OBJECT
+// POST: Create new user
 app.MapPost("/users", (User? user) =>
 {
     var validation = ValidateUser(user);
@@ -167,14 +168,15 @@ app.MapPost("/users", (User? user) =>
     }
     
     int newId = GetNextUserId();
-    user!.Id = newId; // Set the ID on the user object
-    users.TryAdd(newId, user);
-    return Results.Created($"/users/{newId}", user); // Return the user with ID
+    var newUser = user! with { Id = newId };
+    users.TryAdd(newId, newUser); // Remove unnecessary check - ID is always unique
+    return Results.Created($"/users/{newId}", newUser);
 });
 
-// PUT: Update an existing user - NOW PRESERVES THE ID
+// PUT: Update existing user
 app.MapPut("/users/{id:int}", (int id, User? user) =>
 {
+    // Check if user exists first
     if (!users.ContainsKey(id))
     {
         return Results.NotFound(new { error = $"User with ID {id} not found" });
@@ -186,15 +188,15 @@ app.MapPut("/users/{id:int}", (int id, User? user) =>
         return Results.BadRequest(new { error = validation.errorMessage });
     }
     
-    user!.Id = id; // Ensure the user object has the correct ID
-    users.TryUpdate(id, user, users[id]);
-    return Results.Ok(user); // Return the updated user with ID
+    var userToStore = user! with { Id = id };
+    users.TryUpdate(id, userToStore, users[id]);
+    return Results.Ok(userToStore);
 });
 
-// DELETE: Remove a user by ID
+// DELETE: Remove user by ID
 app.MapDelete("/users/{id:int}", (int id) =>
 {
-    if (users.TryRemove(id, out var removedUser))
+    if (users.TryRemove(id, out _))
     {
         return Results.NoContent();
     }

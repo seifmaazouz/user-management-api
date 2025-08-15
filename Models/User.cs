@@ -1,7 +1,10 @@
-public class User
+namespace UserManagementAPI.Models;
+
+public sealed record User
 {
-    public int Id { get; set; }
-    public string? Username { get; set; }
-    public string? Email { get; set; }
-    public int UserAge { get; set; }
+    public required int Id { get; init; }
+    public required string Username { get; init; }
+    public required string Email { get; init; }
+    public required int Age { get; init; }
+    public required string Password { get; init; }
 }
