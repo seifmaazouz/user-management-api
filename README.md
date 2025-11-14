@@ -4,53 +4,52 @@ A simple REST API for managing users built with ASP.NET Core minimal APIs. This 
 
 ## Features
 
-- ✅ **CRUD Operations**: Create, Read, Update, Delete users  
-- ✅ **Authentication Middleware**: Simple token-based authentication  
-- ✅ **Global Exception Handling**: Centralized error handling  
-- ✅ **Request/Response Logging**: Comprehensive logging middleware  
-- ✅ **Input Validation**: Email format, age limits, username validation  
-- ✅ **Thread-Safe Operations**: Concurrent dictionary for data storage  
-- ✅ **Comprehensive Testing**: 30+ test cases included
+- ✅ `CRUD Operations`: Create, Read, Update, Delete users  
+- ✅ `Authentication Middleware`: Token-based authentication (configurable)  
+- ✅ `Global Exception Handling`: Centralized error handling  
+- ✅ `Request/Response Logging`: Comprehensive request/response logging middleware  
+- ✅ `Input Validation`: Email format, age limits, username validation  
+- ✅ `Thread-Safe Operations`: `ConcurrentDictionary` for data storage  
+- ✅ `Comprehensive Testing`: 30+ test cases included (`TestRequests.http`)
 
 ## Prerequisites
 
 - .NET 8.0 or later  
-- Visual Studio Code with REST Client extension (for testing)
+- Visual Studio Code with REST Client extension (recommended)
 
 ## Quick Start
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/seifmaazouz/user-management-api.git
-   cd user-management-api
-   ```
+1. Clone:
+```bash
+git clone https://github.com/seifmaazouz/user-management-api.git
+cd user-management-api
+```
 
-2. **Run the application**
-   ```bash
-   dotnet run
-   ```
+2. Run:
+```bash
+dotnet run
+```
 
-3. **Test the API**
-   - Open `TestRequests.http` in VS Code
-   - Click "Send Request" above any test case
-   - API runs on `http://localhost:5070`
+3. Test:
+- Open `TestRequests.http` in VS Code and use the REST Client "Send Request" buttons.  
+- Default base URL: `http://localhost:5070`
 
 ## API Endpoints
 
 ### Public Endpoints (No Authentication)
-- `GET /` - Root endpoint  
-- `GET /error` - Test exception handling
+- `GET /` — Root endpoint  
+- `GET /error` — Trigger global exception handler (testing)
 
 ### Protected Endpoints (Requires Authentication)
-- `GET /users` - Get all users  
-- `GET /users/{id}` - Get user by ID  
-- `POST /users` - Create new user  
-- `PUT /users/{id}` - Update existing user  
-- `DELETE /users/{id}` - Delete user
+- `GET /users` — Get all users  
+- `GET /users/{id}` — Get user by ID  
+- `POST /users` — Create new user  
+- `PUT /users/{id}` — Update existing user  
+- `DELETE /users/{id}` — Delete user
 
 ## Authentication
 
-The application reads the expected token from `appsettings.json` using the key:
+The application reads the expected token from `appsettings.json` key `AuthToken`:
 
 ```json
 {
@@ -58,16 +57,15 @@ The application reads the expected token from `appsettings.json` using the key:
 }
 ```
 
-- If `AuthToken` is present in `appsettings.json`, that value is used as the required token.
-- If `AuthToken` is not configured, the application falls back to the default token: `mysecret123`.
+- If `AuthToken` is present, that value is required in the `Authorization` header.  
+- If missing, the application falls back to the default token: `mysecret123`.
 
-Send the token in the `Authorization` header:
-
+Send the token as:
 ```http
 Authorization: secret-appsettings-token-abc123
 ```
 
-Requests with a missing or invalid token will return `401 Unauthorized`.
+Missing or invalid tokens return `401 Unauthorized`.
 
 ## Example Requests
 
@@ -76,15 +74,15 @@ Requests with a missing or invalid token will return `401 Unauthorized`.
 GET http://localhost:5070/users
 Authorization: secret-appsettings-token-abc123
 
-# Create new user
+# Create user
 POST http://localhost:5070/users
 Authorization: secret-appsettings-token-abc123
 Content-Type: application/json
 
 {
-    "username": "John Doe",
-    "email": "john@example.com",
-    "userAge": 28
+  "username": "John Doe",
+  "email": "john@example.com",
+  "userAge": 28
 }
 ```
 
@@ -92,23 +90,23 @@ Content-Type: application/json
 
 ```json
 {
-    "username": "string (1-100 characters, required)",
-    "email": "string (valid email format, required)",
-    "userAge": "integer (0-150, required)"
+  "username": "string (1-100 characters, required)",
+  "email": "string (valid email format, required)",
+  "userAge": "integer (0-150, required)"
 }
 ```
 
 ## Middleware Pipeline
 
-The application uses three middleware components in this order:
+Order of middleware (registered in `Program.cs`):
 
-1. `Global Exception Handling` - Catches and logs unhandled exceptions.  
-2. `Authentication` - Validates tokens for protected endpoints.  
-3. `Request/Response Logging` - Logs incoming requests and outgoing responses.
+1. `Global Exception Handling` — catches and logs unhandled exceptions  
+2. `Authentication` — validates tokens for protected endpoints  
+3. `Request/Response Logging` — logs request method/path and response status
 
 ## Configuration
 
-- `AuthToken` (appsettings.json): example value `secret-appsettings-token-abc123` (fallback `mysecret123`)  
+- `AuthToken` (appsettings.json): e.g. `secret-appsettings-token-abc123` (fallback: `mysecret123`)  
 - `Base URL`: `http://localhost:5070`  
 - `MAX_AGE`: `150`  
 - `MAX_USERNAME_LENGTH`: `100`
@@ -116,10 +114,10 @@ The application uses three middleware components in this order:
 ## Validation Rules
 
 - `username`: required, 1–100 characters  
-- `email`: required, valid email format  
+- `email`: required, valid email format (validated server-side)  
 - `userAge`: integer between `0` and `150` inclusive
 
-Validation failures return `400 Bad Request` with structured JSON describing errors.
+Validation failures return `400 Bad Request` with structured JSON error details.
 
 ## Project Structure
 
@@ -128,6 +126,9 @@ UserManagementAPI/
 ├── Program.cs                  # Main application with middleware and endpoints
 ├── Models/
 │   └── User.cs                 # User model class
+├── Middleware/                 # Authentication, logging, exception handling
+├── Interfaces/                 # Contracts (IUserRepository, etc.)
+├── Repositories/               # InMemoryUserRepository (thread-safe)
 ├── TestRequests.http           # Comprehensive test cases
 ├── README.md                   # This file
 └── TEST-DOCUMENTATION.md       # Test coverage documentation
@@ -137,13 +138,15 @@ UserManagementAPI/
 
 The API starts with three pre-loaded users:
 
-1. `Alice` (alice@example.com, Age: 30)  
-2. `Bob` (bob@example.com, Age: 25)  
-3. `Charlie` (charlie@example.com, Age: 35)
+1. **Alice** (alice@example.com, Age: 30)
+2. **Bob** (bob@example.com, Age: 25) 
+3. **Charlie** (charlie@example.com, Age: 35)
 
-IDs start from `1`; new users are assigned incrementing IDs.
+Initial user IDs start from 1, and new users get auto-incremented IDs starting from 4.
 
 ## Error Responses
+
+The API returns consistent JSON error responses:
 
 - `400 Bad Request` — validation errors (JSON)  
 - `401 Unauthorized` — missing/invalid token  
@@ -151,39 +154,55 @@ IDs start from `1`; new users are assigned incrementing IDs.
 - `500 Internal Server Error` — centralized error handling
 
 Examples:
-
-Validation error:
 ```json
+// Validation error
 { "error": "Username is required and cannot be empty" }
-```
 
-Not found:
-```json
+// Not found
 { "error": "User with ID 999 not found" }
-```
 
-Server error (development mode may include details):
-```json
+// Server error
 { "error": "An internal server error occurred", "details": "..." }
 ```
 
 ## Thread Safety
 
-- Uses `ConcurrentDictionary<int, User>` for thread-safe storage  
-- Uses `Interlocked.Increment()` for atomic ID generation
+- Storage: `ConcurrentDictionary<int, User>`  
+- Atomic ID generation: `Interlocked.Increment()`  
+- Repository implementation is thread-safe for concurrent requests
 
 ## Development & Extensibility
 
-- Add middleware classes in `Middleware/` and register them in `Program.cs`.  
-- Add or modify endpoints in `Program.cs` (minimal APIs) or `Controllers/` (if using controllers).  
-- Implement new persistence in `Repositories/` and register implementations for `IUserRepository` in DI.  
-- Update validation logic in the validation helper(s).
+- Add middleware in `Middleware/` and register in `Program.cs`.  
+- Add endpoints in `Program.cs` (minimal APIs) or `Controllers/` (if using controllers).  
+- Implement new persistence in `Repositories/` and register concrete implementation for `IUserRepository` in DI.  
+- Update validation in centralized validation helpers.
 
 ## Testing
 
-- `TestRequests.http` includes 30+ scenarios (authentication, validation, CRUD, edge cases).  
-- Use VS Code REST Client or curl to run tests.
+- `TestRequests.http` includes 30+ scenarios (auth, validation, CRUD, edge cases).  
+- Configure variables at top of `TestRequests.http`:
+```
+@baseUrl = http://localhost:5070
+@validToken = secret-appsettings-token-abc123
+@invalidToken = wrongtoken
+```
+- Use VS Code REST Client or `curl` to run tests.
+
+## Learning Objectives
+
+This project demonstrates:
+- ASP.NET Core minimal APIs  
+- Middleware pipeline design and ordering  
+- Token-based authentication patterns (configurable via `appsettings.json`)  
+- Centralized error handling strategies  
+- Input validation techniques and consistent error responses  
+- Request and response logging best practices  
+- RESTful API design and status-code conventions  
+- HTTP testing methodologies (REST Client and request collections)  
+- Thread-safe programming and concurrent data structures (`ConcurrentDictionary`, `Interlocked`)  
+- Decoupling via interfaces for testability and replaceable persistence
 
 ## License
 
-Educational / demo code.
+Educational / demo code — use for learning and reference.
